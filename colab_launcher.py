@@ -50,8 +50,25 @@ install_apply_patch()
 # ----------------------------
 # 1) Secrets + runtime config
 # ----------------------------
-from google.colab import userdata  # type: ignore
-from google.colab import drive  # type: ignore
+try:
+    from google.colab import userdata  # type: ignore
+    from google.colab import drive  # type: ignore
+    _IS_COLAB = True
+except Exception:
+    _IS_COLAB = False
+
+    class _UserDataFallback:
+        @staticmethod
+        def get(_name: str):
+            raise KeyError("google.colab.userdata unavailable")
+
+    class _DriveFallback:
+        @staticmethod
+        def mount(_path: str):
+            return None
+
+    userdata = _UserDataFallback()  # type: ignore
+    drive = _DriveFallback()  # type: ignore
 
 _LEGACY_CFG_WARNED: Set[str] = set()
 
@@ -152,11 +169,14 @@ if str(ANTHROPIC_API_KEY or "").strip():
 # ----------------------------
 # 2) Mount Drive
 # ----------------------------
-if not pathlib.Path("/content/drive/MyDrive").exists():
-    drive.mount("/content/drive")
-
-DRIVE_ROOT = pathlib.Path("/content/drive/MyDrive/Ouroboros").resolve()
-REPO_DIR = pathlib.Path("/content/ouroboros_repo").resolve()
+if _IS_COLAB:
+    if not pathlib.Path("/content/drive/MyDrive").exists():
+        drive.mount("/content/drive")
+    DRIVE_ROOT = pathlib.Path("/content/drive/MyDrive/Ouroboros").resolve()
+    REPO_DIR = pathlib.Path("/content/ouroboros_repo").resolve()
+else:
+    DRIVE_ROOT = pathlib.Path(os.environ.get("OUROBOROS_DRIVE_ROOT", str(pathlib.Path.cwd() / ".ouroboros_drive"))).resolve()
+    REPO_DIR = pathlib.Path(os.environ.get("OUROBOROS_REPO_DIR", str(pathlib.Path.cwd()))).resolve()
 
 for sub in ["state", "logs", "memory", "index", "locks", "archive"]:
     (DRIVE_ROOT / sub).mkdir(parents=True, exist_ok=True)
@@ -184,8 +204,8 @@ if not CHAT_LOG_PATH.exists():
 # ----------------------------
 # 3) Git constants
 # ----------------------------
-BRANCH_DEV = "ouroboros"
-BRANCH_STABLE = "ouroboros-stable"
+BRANCH_DEV = os.environ.get("OUROBOROS_BRANCH_DEV", "main")
+BRANCH_STABLE = os.environ.get("OUROBOROS_BRANCH_STABLE", "main")
 REMOTE_URL = f"https://{GITHUB_TOKEN}:x-oauth-basic@github.com/{GITHUB_USER}/{GITHUB_REPO}.git"
 
 # ----------------------------

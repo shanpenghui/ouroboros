@@ -4,10 +4,11 @@ Writes apply_patch script to /usr/local/bin/ on import.
 
 Supports: *** Update File, *** Add File, *** Delete File, *** End of File.
 """
+import os
 import pathlib
 
 
-APPLY_PATCH_PATH = pathlib.Path("/usr/local/bin/apply_patch")
+APPLY_PATCH_PATH = pathlib.Path(os.environ.get("OUROBOROS_APPLY_PATCH_PATH", "/usr/local/bin/apply_patch"))
 APPLY_PATCH_CODE = r"""#!/usr/bin/env python3
 import os
 import sys
@@ -172,7 +173,14 @@ if __name__ == "__main__":
 
 
 def install():
-    """Install apply_patch script to /usr/local/bin/."""
-    APPLY_PATCH_PATH.parent.mkdir(parents=True, exist_ok=True)
-    APPLY_PATCH_PATH.write_text(APPLY_PATCH_CODE, encoding="utf-8")
-    APPLY_PATCH_PATH.chmod(0o755)
+    """Install apply_patch script, fallback to ~/.local/bin when system path is not writable."""
+    target = APPLY_PATCH_PATH
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(APPLY_PATCH_CODE, encoding="utf-8")
+        target.chmod(0o755)
+    except PermissionError:
+        target = pathlib.Path.home() / ".local" / "bin" / "apply_patch"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(APPLY_PATCH_CODE, encoding="utf-8")
+        target.chmod(0o755)
