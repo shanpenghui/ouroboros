@@ -40,6 +40,43 @@ def ensure_claude_code_cli() -> bool:
     has_cli = subprocess.run(["bash", "-lc", "command -v claude >/dev/null 2>&1"], check=False).returncode == 0
     return has_cli
 
+
+def ensure_gh_cli() -> bool:
+    """Best-effort install of GitHub CLI (gh) for GitHub operations."""
+    local_bin = str(pathlib.Path.home() / ".local" / "bin")
+    if local_bin not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = f"{local_bin}:{os.environ.get('PATH', '')}"
+
+    has_cli = subprocess.run(
+        ["bash", "-lc", "command -v gh >/dev/null 2>&1"],
+        check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    ).returncode == 0
+    if has_cli:
+        return True
+
+    import urllib.request, tarfile, shutil, tempfile
+    gh_version = "2.44.1"
+    gh_url = f"https://github.com/cli/cli/releases/download/v{gh_version}/gh_{gh_version}_linux_amd64.tar.gz"
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
+            urllib.request.urlretrieve(gh_url, tmp.name)
+            with tarfile.open(tmp.name, "r:gz") as tar:
+                tar.extractall("/tmp")
+        src = f"/tmp/gh_{gh_version}_linux_amd64/bin/gh"
+        dst = pathlib.Path(local_bin) / "gh"
+        pathlib.Path(local_bin).mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+        dst.chmod(0o755)
+        # gh picks up GITHUB_TOKEN env var automatically - no explicit auth needed
+    except Exception as e:
+        print(f"[launcher] gh install failed: {e}")
+
+    has_cli = subprocess.run(
+        ["bash", "-lc", "command -v gh >/dev/null 2>&1"],
+        check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    ).returncode == 0
+    return has_cli
+
 # ----------------------------
 # 0.1) provide apply_patch shim
 # ----------------------------
@@ -148,6 +185,9 @@ os.environ["TELEGRAM_BOT_TOKEN"] = str(TELEGRAM_BOT_TOKEN)
 
 if str(ANTHROPIC_API_KEY or "").strip():
     ensure_claude_code_cli()
+
+# Install gh CLI for GitHub operations (uses GITHUB_TOKEN automatically)
+ensure_gh_cli()
 
 # ----------------------------
 # 2) Mount Drive
